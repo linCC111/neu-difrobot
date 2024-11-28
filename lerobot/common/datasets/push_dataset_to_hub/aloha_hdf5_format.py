@@ -231,3 +231,30 @@ def from_raw_to_lerobot_format(
         info["encoding"] = get_default_encoding()
 
     return hf_dataset, episode_data_index, info
+
+def test():
+    from lerobot.common.datasets.lerobot_dataset import LeRobotDataset
+    from lerobot.common.datasets.compute_stats import compute_stats
+    from lerobot.scripts.push_dataset_to_hub import save_meta_data
+    #set data dir
+    print("start dataset convert")
+    repo_id = "aloha_sim_transfer_cube_scripted"
+    root = "/home/lin/workspace/lerobot/dataset/sim_transfer_cube_scripted/"
+    local_dir = root + repo_id
+    raw_dir = Path(root)
+    videos_dir = Path(local_dir + "/videos")
+    #get hf dataset
+    hf_dataset, episode_data_index, info = from_raw_to_lerobot_format(raw_dir= raw_dir, videos_dir= videos_dir)
+    #compute stats
+    lerobot_dataset = LeRobotDataset.from_preloaded(repo_id= repo_id, hf_dataset= hf_dataset, episode_data_index= episode_data_index, info= info, videos_dir=videos_dir)
+    stats = compute_stats(lerobot_dataset)
+    #save to file
+    hf_dataset = hf_dataset.with_format(None)
+    hf_dataset.save_to_disk(local_dir + "/train")
+    lerobot_dataset.stats = stats
+    meta_data_dir = Path(local_dir + "/meta_data")
+    save_meta_data(info=info, stats= stats, episode_data_index= episode_data_index, meta_data_dir= meta_data_dir)
+    print("done")
+
+if __name__ == "__main__":
+    test()

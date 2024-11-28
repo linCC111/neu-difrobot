@@ -66,6 +66,11 @@ def get_policy_and_config_classes(name: str) -> tuple[Policy, object]:
         from lerobot.common.policies.vqbet.modeling_vqbet import VQBeTPolicy
 
         return VQBeTPolicy, VQBeTConfig
+    elif name == "transformer_diffusion":
+        from lerobot.common.policies.transformer_diffusion.configuration import TransformerDiffusionConfig
+        from lerobot.common.policies.transformer_diffusion.modeling import TransformerDiffusionPolicy
+
+        return TransformerDiffusionPolicy, TransformerDiffusionConfig
     else:
         raise NotImplementedError(f"Policy with name {name} is not implemented.")
 

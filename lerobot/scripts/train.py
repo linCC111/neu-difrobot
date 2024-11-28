@@ -30,6 +30,9 @@ from omegaconf import DictConfig, ListConfig, OmegaConf
 from termcolor import colored
 from torch import nn
 from torch.cuda.amp import GradScaler
+from tqdm import tqdm
+import matplotlib.pyplot as plt
+import os
 
 from lerobot.common.datasets.factory import make_dataset, resolve_delta_timestamps
 from lerobot.common.datasets.lerobot_dataset import MultiLeRobotDataset
@@ -89,6 +92,22 @@ def make_optimizer_and_scheduler(cfg, policy):
             optimizer=optimizer,
             num_warmup_steps=cfg.training.lr_warmup_steps,
             num_training_steps=cfg.training.offline_steps,
+        )
+    elif cfg.policy.name == "transformer_diffusion":
+        optimizer = torch.optim.Adam(
+            policy.model.parameters(),
+            cfg.training.lr,
+            cfg.training.adam_betas,
+            cfg.training.adam_eps,
+            cfg.training.adam_weight_decay,
+        )
+        from diffusers.optimization import get_scheduler
+
+        lr_scheduler = get_scheduler(
+            cfg.training.lr_scheduler,
+            optimizer= optimizer,
+            num_warmup_steps= cfg.training.lr_warmup_steps,
+            num_training_steps= cfg.training.offline_steps,
         )
     elif policy.name == "tdmpc":
         optimizer = torch.optim.Adam(policy.parameters(), cfg.training.lr)
@@ -199,6 +218,16 @@ def log_train_info(logger: Logger, info, step, cfg, dataset, is_online):
 
     logger.log_dict(info, step, mode="train")
 
+def plot_train_info(train_history, validation_history, step, out_dir, seed):
+    plot_path = os.path.join(out_dir, f'train_val_loss_seed_{seed}.png')
+    plt.figure()
+    train_values = [summery for summery in train_history]
+    plt.plot(np.linspace(0, step - 1, len(train_history)), train_values, label= 'train')
+    plt.tight_layout()
+    plt.legend()
+    plt.title('loss')
+    plt.savefig(plot_path)
+    # print('save plot to {out_dir}')
 
 def log_eval_info(logger, info, step, cfg, dataset, is_online):
     eval_s = info["eval_s"]
@@ -416,10 +445,11 @@ def train(cfg: DictConfig, out_dir: str | None = None, job_name: str | None = No
 
     policy.train()
     offline_step = 0
-    for _ in range(step, cfg.training.offline_steps):
-        if offline_step == 0:
-            logging.info("Start offline training on a fixed dataset")
-
+    train_history = []
+    validation_history = []
+    if offline_step == 0:
+        logging.info("Start offline training on a fixed dataset")
+    for _ in tqdm(range(step, cfg.training.offline_steps)):
         start_time = time.perf_counter()
         batch = next(dl_iter)
         dataloading_s = time.perf_counter() - start_time
@@ -438,9 +468,10 @@ def train(cfg: DictConfig, out_dir: str | None = None, job_name: str | None = No
         )
 
         train_info["dataloading_s"] = dataloading_s
-
+        train_history.append(train_info["loss"])
         if step % cfg.training.log_freq == 0:
-            log_train_info(logger, train_info, step, cfg, offline_dataset, is_online=False)
+            # log_train_info(logger, train_info, step, cfg, offline_dataset, is_online=False)
+            plot_train_info(train_history, validation_history, step, out_dir, cfg.seed)
 
         # Note: evaluate_and_checkpoint_if_needed happens **after** the `step`th training update has completed,
         # so we pass in step + 1.
