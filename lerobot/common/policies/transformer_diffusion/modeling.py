@@ -37,6 +37,7 @@ from typing import Optional, Union
 from lerobot.common.policies.transformer_diffusion.configuration import TransformerDiffusionConfig as TDConfig
 from lerobot.common.policies.normalize import Normalize, Unnormalize
 import lerobot.common.policies.transformer_diffusion.tinydiffp as dfp
+from lerobot.common.policies.utils import populate_queues
 
 
 
@@ -79,7 +80,11 @@ class TransformerDiffusionPolicy(nn.Module, PyTorchModelHubMixin):
 
     def reset(self):
         """This should be called whenever the environment is reset."""
-        self._action_queue = deque([], maxlen=self.config.n_action_steps)
+        self._queues = {
+            "action": deque(maxlen=self.config.n_action_steps),
+        }
+        if len(self.expected_image_keys) > 0:
+            self._queues["observation.images"] = deque(maxlen=self.config.n_obs_steps)
 
     @torch.no_grad
     def select_action(self, batch: Dict[str, Tensor]) -> Tensor:
@@ -91,11 +96,15 @@ class TransformerDiffusionPolicy(nn.Module, PyTorchModelHubMixin):
         """
         self.eval()
         batch = self.normalize_inputs(batch)
-        batch["observation.images"] = torch.stack([batch[k] for k in self.expected_image_keys], dim=-4)
+        if len(self.expected_image_keys) > 0:
+            batch = dict(batch)  # shallow copy so that adding a key doesn't modify the original
+            batch["observation.images"] = torch.stack([batch[k] for k in self.expected_image_keys], dim=-4)
+        self._queues = populate_queues(self._queues, batch)
 
         # Action queue logic for n_action_steps > 1. When the action_queue is depleted, populate it by
         # querying the policy.
-        if len(self._action_queue) == 0:
+        if len(self._queues["action"]) == 0:
+            batch = {k: torch.stack(list(self._queues[k]), dim=1) for k in batch if k in self._queues}
             actions = self.model(batch)[0][:, : self.config.n_action_steps]
 
             # TODO(rcadene): make _forward return output dictionary?
@@ -103,8 +112,9 @@ class TransformerDiffusionPolicy(nn.Module, PyTorchModelHubMixin):
 
             # `self.model.forward` returns a (batch_size, n_action_steps, action_dim) tensor, but the queue
             # effectively has shape (n_action_steps, batch_size, *), hence the transpose.
-            self._action_queue.extend(actions.transpose(0, 1))
-        return self._action_queue.popleft()
+            self._queues["action"].extend(actions.transpose(0, 1))
+        action = self._queues["action"].popleft()
+        return action
 
     def forward(self, batch: Dict[str, Tensor]) -> Dict[str, Tensor]:
         """Run the batch through the model and compute the loss for training or validation."""

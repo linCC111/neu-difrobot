@@ -31,7 +31,7 @@ from termcolor import colored
 from torch import nn
 from torch.cuda.amp import GradScaler
 from tqdm import tqdm
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import os
 
 from lerobot.common.datasets.factory import make_dataset, resolve_delta_timestamps
@@ -218,20 +218,22 @@ def log_train_info(logger: Logger, info, step, cfg, dataset, is_online):
 
     logger.log_dict(info, step, mode="train")
 
-def plot_train_info(train_history, validation_history, step, out_dir, seed):
-    plot_path = os.path.join(out_dir, f'train_val_loss_seed_{seed}.png')
-    plt.figure()
-    train_values = [summery for summery in train_history]
-    plt.plot(np.linspace(0, step - 1, len(train_history)), train_values, label= 'train')
-    plt.tight_layout()
-    plt.legend()
-    plt.title('loss')
-    plt.savefig(plot_path)
-    # print('save plot to {out_dir}')
+# def plot_train_info(train_history, validation_history, step, out_dir, seed):
+#     plot_path = os.path.join(out_dir, f'train_val_loss_seed_{seed}.png')
+#     plt.figure()
+#     train_values = [summery for summery in train_history]
+#     plt.plot(np.linspace(0, step - 1, len(train_history)), train_values, label= 'train')
+#     plt.tight_layout()
+#     plt.legend()
+#     plt.title('loss')
+#     plt.savefig(plot_path)
+#     plt.close()
+#     # print('save plot to {out_dir}')
 
 def log_eval_info(logger, info, step, cfg, dataset, is_online):
     eval_s = info["eval_s"]
     avg_sum_reward = info["avg_sum_reward"]
+    avg_max_reward = info["avg_max_reward"]
     pc_success = info["pc_success"]
 
     # A sample is an (observation,action) pair, where observation and action
@@ -248,7 +250,7 @@ def log_eval_info(logger, info, step, cfg, dataset, is_online):
         f"ep:{format_big_number(num_episodes)}",
         # number of time all unique samples are seen
         f"epch:{num_epochs:.2f}",
-        f"∑rwrd:{avg_sum_reward:.3f}",
+        f"∑rwrd:{avg_max_reward:.3f}",
         f"success:{pc_success:.1f}%",
         f"eval_s:{eval_s:.3f}",
     ]
@@ -469,9 +471,9 @@ def train(cfg: DictConfig, out_dir: str | None = None, job_name: str | None = No
 
         train_info["dataloading_s"] = dataloading_s
         train_history.append(train_info["loss"])
-        if step % cfg.training.log_freq == 0:
+        # if step % cfg.training.log_freq == 0:
             # log_train_info(logger, train_info, step, cfg, offline_dataset, is_online=False)
-            plot_train_info(train_history, validation_history, step, out_dir, cfg.seed)
+            # plot_train_info(train_history, validation_history, step, out_dir, cfg.seed)
 
         # Note: evaluate_and_checkpoint_if_needed happens **after** the `step`th training update has completed,
         # so we pass in step + 1.
