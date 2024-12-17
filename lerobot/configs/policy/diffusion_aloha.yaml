@@ -5,7 +5,7 @@
 #       https://github.com/huggingface/lerobot/pull/134 for more details.
 hydra:
   run:
-    dir: outputs/train/diffusion_ee_transfer_cube # todo
+    dir: outputs/train/diffusion_transfer_cube # todo
   job:
     name: default # todo
 
@@ -13,7 +13,7 @@ resume: false
 device: cuda:0
 use_amp: false
 seed: 1000
-dataset_repo_id: aloha_sim_ee_transfer_cube_scripted
+dataset_repo_id: aloha_sim_transfer_cube_scripted
 dataset_root: data/
 video_backend: pyav
 
@@ -28,20 +28,20 @@ wandb:
 fps: 50
 env:
   name: aloha
-  task: AlohaEETransferCube-v0
-  state_dim: 16
-  action_dim: 16
+  task: AlohaTransferCube-v0
+  state_dim: 14
+  action_dim: 14
   fps: ${fps}
   episode_length: 400
   gym:
-    obs_type: pixels_agent_ee_pos
+    obs_type: pixels_agent_pos
     render_mode: rgb_array
 
 training:
-  offline_steps: 2000
+  offline_steps: 200000
   online_steps: 0
-  eval_freq: 2000
-  save_freq: 100
+  eval_freq: 20000
+  save_freq: 20000
   log_freq: 250
   save_model: true
   save_checkpoint: true
@@ -100,8 +100,8 @@ policy:
 
   # Input / output structure.
   n_obs_steps: 2
-  horizon: 16   
-  n_action_steps: 8
+  horizon: 128   
+  n_action_steps: 100
 
   input_shapes:
     # TODO(rcadene, alexander-soare): add variables for height and width from the dataset/env?
@@ -113,18 +113,19 @@ policy:
   # Normalization / Unnormalization
   input_normalization_modes:
     observation.images.top: mean_std
-    observation.state: mean_std
+    observation.state: min_max
   output_normalization_modes:
-    action: mean_std
+    action: min_max
 
   # Architecture / modeling.
   # Vision backbone.
   vision_backbone: resnet18
-  crop_shape: [480, 640]
+  crop_shape: [440, 560]
   crop_is_random: True
   pretrained_backbone_weights: null
   use_group_norm: True
-  spatial_softmax_num_keypoints: 32
+  use_spatial_softmax: True
+  spatial_softmax_num_keypoints: 256
   # Unet.
   down_dims: [512, 1024, 2048]
   kernel_size: 5
@@ -132,7 +133,7 @@ policy:
   diffusion_step_embed_dim: 128
   use_film_scale_modulation: True
   # Noise scheduler.
-  num_train_timesteps: 50
+  num_train_timesteps: 100
   beta_schedule: squaredcos_cap_v2
   beta_start: 0.0001
   beta_end: 0.02
@@ -141,7 +142,7 @@ policy:
   clip_sample_range: 1.0
 
   # Inference
-  num_inference_steps: 10
+  num_inference_steps: 100
 
   # Loss computation
   do_mask_loss_for_padding: false

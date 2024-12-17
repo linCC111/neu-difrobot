@@ -31,7 +31,11 @@ from termcolor import colored
 from torch import nn
 from torch.cuda.amp import GradScaler
 from tqdm import tqdm
-# import matplotlib.pyplot as plt
+
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
 import os
 
 from lerobot.common.datasets.factory import make_dataset, resolve_delta_timestamps
@@ -218,17 +222,17 @@ def log_train_info(logger: Logger, info, step, cfg, dataset, is_online):
 
     logger.log_dict(info, step, mode="train")
 
-# def plot_train_info(train_history, validation_history, step, out_dir, seed):
-#     plot_path = os.path.join(out_dir, f'train_val_loss_seed_{seed}.png')
-#     plt.figure()
-#     train_values = [summery for summery in train_history]
-#     plt.plot(np.linspace(0, step - 1, len(train_history)), train_values, label= 'train')
-#     plt.tight_layout()
-#     plt.legend()
-#     plt.title('loss')
-#     plt.savefig(plot_path)
-#     plt.close()
-#     # print('save plot to {out_dir}')
+def plot_train_info(train_history, validation_history, step, out_dir, seed):
+    plot_path = os.path.join(out_dir, f'train_val_loss_seed_{seed}.png')
+    plt.figure()
+    train_values = [summery for summery in train_history]
+    plt.plot(np.linspace(0, step - 1, len(train_history)), train_values, label= 'train')
+    plt.tight_layout()
+    plt.legend()
+    plt.title('loss')
+    plt.savefig(plot_path)
+    plt.close()
+    # print('save plot to {out_dir}')
 
 def log_eval_info(logger, info, step, cfg, dataset, is_online):
     eval_s = info["eval_s"]
@@ -471,9 +475,9 @@ def train(cfg: DictConfig, out_dir: str | None = None, job_name: str | None = No
 
         train_info["dataloading_s"] = dataloading_s
         train_history.append(train_info["loss"])
-        # if step % cfg.training.log_freq == 0:
+        if step % cfg.training.log_freq == 0:
             # log_train_info(logger, train_info, step, cfg, offline_dataset, is_online=False)
-            # plot_train_info(train_history, validation_history, step, out_dir, cfg.seed)
+            plot_train_info(train_history, validation_history, step, out_dir, cfg.seed)
 
         # Note: evaluate_and_checkpoint_if_needed happens **after** the `step`th training update has completed,
         # so we pass in step + 1.
@@ -628,7 +632,7 @@ def train(cfg: DictConfig, out_dir: str | None = None, job_name: str | None = No
             continue
 
         policy.train()
-        for _ in range(cfg.training.online_steps_between_rollouts):
+        for _ in tqdm(range(cfg.training.online_steps_between_rollouts)):
             with lock:
                 start_time = time.perf_counter()
                 batch = next(dl_iter)
@@ -655,8 +659,8 @@ def train(cfg: DictConfig, out_dir: str | None = None, job_name: str | None = No
             with lock:
                 train_info["online_buffer_size"] = len(online_dataset)
 
-            if step % cfg.training.log_freq == 0:
-                log_train_info(logger, train_info, step, cfg, online_dataset, is_online=True)
+            # if step % cfg.training.log_freq == 0:
+            #     log_train_info(logger, train_info, step, cfg, online_dataset, is_online=True)
 
             # Note: evaluate_and_checkpoint_if_needed happens **after** the `step`th training update has completed,
             # so we pass in step + 1.

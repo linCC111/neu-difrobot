@@ -461,14 +461,33 @@ class DiffusionRgbEncoder(nn.Module):
                 self.maybe_random_crop = self.center_crop
         else:
             self.do_crop = False
-
+        self.use_spatial_softmax = config.use_spatial_softmax
         # Set up backbone.
         backbone_model = getattr(torchvision.models, config.vision_backbone)(
             weights=config.pretrained_backbone_weights
         )
-        # Note: This assumes that the layer4 feature map is children()[-3]
-        # TODO(alexander-soare): Use a safer alternative.
-        self.backbone = nn.Sequential(*(list(backbone_model.children())[:-2]))
+        if not self.use_spatial_softmax:
+            self.feature_dim = backbone_model.fc.in_features
+            backbone_model.fc = nn.Identity()
+            self.backbone = backbone_model
+        else:
+            # Note: This assumes that the layer4 feature map is children()[-3]
+            # TODO(alexander-soare): Use a safer alternative.
+            self.backbone = nn.Sequential(*(list(backbone_model.children())[:-2]))
+            image_keys = [k for k in config.input_shapes if k.startswith("observation.image")]
+            # Note: we have a check in the config class to make sure all images have the same shape.
+            image_key = image_keys[0]
+            dummy_input_h_w = (
+                config.crop_shape if config.crop_shape is not None else config.input_shapes[image_key][1:]
+            )
+            dummy_input = torch.zeros(size=(1, config.input_shapes[image_key][0], *dummy_input_h_w))
+            with torch.inference_mode():
+                dummy_feature_map = self.backbone(dummy_input)
+            feature_map_shape = tuple(dummy_feature_map.shape[1:])
+            self.pool = SpatialSoftmax(feature_map_shape, num_kp=config.spatial_softmax_num_keypoints)
+            self.feature_dim = config.spatial_softmax_num_keypoints * 2
+            self.out = nn.Linear(config.spatial_softmax_num_keypoints * 2, self.feature_dim)
+            self.relu = nn.ReLU()
         if config.use_group_norm:
             if config.pretrained_backbone_weights:
                 raise ValueError(
@@ -485,20 +504,8 @@ class DiffusionRgbEncoder(nn.Module):
         # The dummy input should take the number of image channels from `config.input_shapes` and it should
         # use the height and width from `config.crop_shape` if it is provided, otherwise it should use the
         # height and width from `config.input_shapes`.
-        image_keys = [k for k in config.input_shapes if k.startswith("observation.image")]
-        # Note: we have a check in the config class to make sure all images have the same shape.
-        image_key = image_keys[0]
-        dummy_input_h_w = (
-            config.crop_shape if config.crop_shape is not None else config.input_shapes[image_key][1:]
-        )
-        dummy_input = torch.zeros(size=(1, config.input_shapes[image_key][0], *dummy_input_h_w))
-        with torch.inference_mode():
-            dummy_feature_map = self.backbone(dummy_input)
-        feature_map_shape = tuple(dummy_feature_map.shape[1:])
-        self.pool = SpatialSoftmax(feature_map_shape, num_kp=config.spatial_softmax_num_keypoints)
-        self.feature_dim = config.spatial_softmax_num_keypoints * 2
-        self.out = nn.Linear(config.spatial_softmax_num_keypoints * 2, self.feature_dim)
-        self.relu = nn.ReLU()
+
+        
 
     def forward(self, x: Tensor) -> Tensor:
         """
@@ -514,10 +521,13 @@ class DiffusionRgbEncoder(nn.Module):
             else:
                 # Always use center crop for eval.
                 x = self.center_crop(x)
-        # Extract backbone feature.
-        x = torch.flatten(self.pool(self.backbone(x)), start_dim=1)
-        # Final linear layer with non-linearity.
-        x = self.relu(self.out(x))
+        if self.use_spatial_softmax:
+            # Extract backbone feature.
+            x = torch.flatten(self.pool(self.backbone(x)), start_dim=1)
+            # Final linear layer with non-linearity.
+            x = self.relu(self.out(x))
+        else:
+            x = self.backbone(x)
         return x
 
 

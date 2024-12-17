@@ -119,6 +119,7 @@ class TransformerDiffusionConfig:
     crop_is_random: bool = True
     pretrained_backbone_weights: str | None = None
     use_group_norm: bool = True
+    use_spatial_softmax: bool = True
     spatial_softmax_num_keypoints: int = 32
     use_separate_rgb_encoder_per_camera: bool = False
     # Transformer layers.
@@ -128,6 +129,8 @@ class TransformerDiffusionConfig:
     causal_attn: bool= True
 
     # Inference.
+    use_temporal_ensemble: bool= False
+    temporal_ensemble_momentum: float= 0.5
     num_inference_steps: int= 100
 
     # Training and loss computation.
